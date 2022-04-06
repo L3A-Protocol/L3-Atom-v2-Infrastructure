@@ -1,0 +1,46 @@
+import asyncio
+import aioredis
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
+
+
+class RedisStreamConsumer():
+    def __init__(self, stream):
+        self.stream = stream
+
+    async def _get_redis_pool(self):
+        try:
+            redis_pool = await aioredis.create_pool(
+                (REDIS_HOST, REDIS_PORT),
+                encoding="utf-8",
+            )
+            return redis_pool
+        except Exception as e:
+            print(f"Error when trying to connect to redis pool: {e}")
+
+    async def receive_message(self):
+        pool = await self._get_redis_pool()
+        if not pool:
+            return
+        try:
+            return await pool.xreadgroup(
+                "group",
+                "consumer",
+                streams=[self.stream],
+                count=1,
+                block=None,
+            )
+        except Exception as e:
+            print(f"Error when trying to receive message: {e}")
+
+def main():
+    loop = asyncio.get_event_loop()
+    consumer = RedisStreamConsumer("stream")
+    loop.run_until_complete(consumer.receive_message())
+
+if __name__ == "__main__":
+    main()

@@ -1,26 +1,17 @@
 import asyncio
-import aioredis
 from dotenv import load_dotenv
 import os
+
+from redis_stream_factory import RedisStreamFactory
 
 load_dotenv()
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = os.getenv("REDIS_PORT")
 
 
-class RedisStreamProducer():
+class RedisStreamProducer(RedisStreamFactory):
     def __init__(self, stream):
-        self.stream = stream
-
-    async def _get_redis_pool(self):
-        try:
-            redis_pool = await aioredis.create_pool(
-                (REDIS_HOST, REDIS_PORT),
-                encoding="utf-8",
-            )
-            return redis_pool
-        except Exception as e:
-            print(f"Error when trying to connect to redis pool: {e}")
+        super().__init__(stream, REDIS_HOST, REDIS_PORT)
 
     async def publish_message(self, message):
         pool = await self._get_redis_pool()
@@ -28,13 +19,24 @@ class RedisStreamProducer():
             return
         try:
             await pool.xadd(self.stream, message)
+            print(f"Published message: {message}")
         except Exception as e:
             print(f"Error when trying to publish message: {e}")
+        finally:
+            await pool.close()
+
+async def produce_every_second(producer: RedisStreamProducer):
+    while True:
+        message = {
+            "message": "Hello from producer"
+        }
+        await producer.publish_message(message)
+        await asyncio.sleep(1)
 
 def main():
     loop = asyncio.get_event_loop()
     producer = RedisStreamProducer("stream")
-    loop.run_until_complete(producer.publish_message({"message": "hello"}))
+    loop.run_until_complete(produce_every_second(producer))
 
 if __name__ == "__main__":
     main()
